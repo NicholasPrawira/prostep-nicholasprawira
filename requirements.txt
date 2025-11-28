@@ -1,0 +1,14 @@
+fastapi
+uvicorn[standard]
+sentence-transformers
+pandas
+numpy
+psycopg2-binary
+python-dotenv
+pgvector
+torch
+transformers
+supabase
+Pillow
+requests
+tqdm
