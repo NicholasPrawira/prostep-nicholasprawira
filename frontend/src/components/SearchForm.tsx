@@ -63,8 +63,6 @@ export default function SearchForm() {
     const fetchInitialImages = async () => {
       setLoading(true)
       try {
-        // Artificial delay for animation
-        await new Promise(resolve => setTimeout(resolve, 3000))
         const response = await axios.get<SearchResponse>(`${API_BASE_URL}/images`)
         setResults(response.data.results)
       } catch (err) {
@@ -92,8 +90,6 @@ export default function SearchForm() {
     setSelectedImage(null)
 
     try {
-      // Artificial delay for animation
-      await new Promise(resolve => setTimeout(resolve, 3000))
       const response = await axios.get<SearchResponse>(`${API_BASE_URL}/search`, {
         params: { q: searchQuery },
       })

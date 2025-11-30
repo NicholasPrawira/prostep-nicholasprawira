@@ -2,8 +2,8 @@ import './globals.css'
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Tigaraksa Image Search - UMN',
-  description: 'Pencarian gambar cerdas berbasis AI untuk Desa Tigaraksa.',
+  title: 'Cari gambar edukatif buatan AI, khusus untuk Desa Tigaraksa',
+  description: 'Tuliskan yang kamu bayangkan, dan lihat gambarnya muncul.',
 }
 
 export default function RootLayout({
@@ -13,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body className="bg-slate-50 text-slate-900 font-sans antialiased selection:bg-umn-yellow/30 selection:text-umn-blue">
+      <body className="bg-gradient-to-br from-blue-50 via-white to-indigo-50 min-h-screen">
         {children}
       </body>
     </html>

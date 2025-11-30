@@ -9,14 +9,9 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        umn: {
-          blue: '#003366', // Deep Blue
-          yellow: '#FDB913', // Golden Yellow
-          lightBlue: '#E6F0FA', // Light Blue background
-        },
-      },
-      fontFamily: {
-        sans: ['Inter', 'sans-serif'],
+        'umn-blue': '#1E3A8A',      // UMN Blue
+        'umn-yellow': '#F59E0B',    // UMN Yellow
+        'umn-lightBlue': '#3B82F6', // UMN Light Blue
       },
     },
   },
