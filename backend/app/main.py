@@ -67,12 +67,38 @@ def get_all_images():
         close_connection(conn)
 
 
+# Category mapping for better matching - more flexible approach
+CATEGORY_MAPPING = {
+    "Tanaman Pangan": ["tanaman", "pangan", "padi", "beras", "gandum", "jagung", "cabai", "tomat"],
+    "Tanaman Buah": ["buah", "apel", "jeruk", "mangga", "pisang", "anggur", "durian", "rambutan"],
+    "Hewan Ternak": ["ternak", "sapi", "kambing", "ayam", "bebek", "babi", "kuda", "kerbau"],
+    "Hewan Liar": ["liar", "harimau", "singa", "gajah", "monyet", "burung", "ular", "buaya"],
+    "Alat Pertanian": ["alat", "pertanian", "traktor", "cangkul", "arit", "garpu", "pacul", " bajak"],
+    "Proses Menanam": ["menanam", "penanaman", "bibit", "pupuk", "sawah", "ladang", "bertanam", "musim"],
+    "Lingkungan Desa": ["desa", "lingkungan", "pedesaan", "rumah", "jalan", "tetangga", "perkampungan", "wilayah"],
+    "Sampah & Daur Ulang": ["sampah", "daur", "ulang", "botol", "kertas", "plastik", "kaleng", "kaca"],
+    "Drum Industri": ["drum", "industri", "pabrik", "mesin", "bahan", "kimia", "minyak", "tangki"],
+    "Keselamatan Anak": ["anak", "keselamatan", "aman", "bermain", "sekolah", "lindung", "keamanan", "pelindungan"],
+    "Cuaca & Musim": ["cuaca", "musim", "hujan", "panas", "dingin", "angin", "gerimis", "mendung"],
+    "Kegiatan Warga": ["warga", "kegiatan", "gotong", "royong", "acara", "peringatan", "pertemuan", "kerja"],
+    "Transportasi Desa": ["transportasi", "desa", "mobil", "motor", "becak", "angkot", "ojek", "kendaraan"]
+}
+
 @app.get("/search", response_model=SearchResponse)
 def search(q: str = Query(..., description="Image search query", min_length=1)):
     """Search for images by text description"""
     try:
         logger.info(f"Search query: {q}")
-        result = search_images(q)
+        
+        # Check if query is a predefined category and enhance it
+        enhanced_query = q
+        if q in CATEGORY_MAPPING:
+            # For categories, include related terms to improve matching
+            related_terms = CATEGORY_MAPPING[q]
+            enhanced_query = q + " " + " ".join(related_terms)
+            logger.info(f"Enhanced category query: {enhanced_query}")
+        
+        result = search_images(enhanced_query, limit=8)  # Increase limit for better results
         logger.info(f"Found {len(result.results)} results")
         return result
     except Exception as e:
