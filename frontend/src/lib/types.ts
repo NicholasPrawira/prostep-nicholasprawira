@@ -2,7 +2,6 @@ export interface SearchResult {
   prompt: string
   image_url: string
   clipscore: number
-  similarity: number
 }
 
 export interface SearchResponse {

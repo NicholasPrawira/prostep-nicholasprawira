@@ -7,7 +7,6 @@ interface SearchResult {
   prompt: string
   image_url: string
   clipscore: number
-  similarity: number
 }
 
 interface SearchResponse {
@@ -287,15 +286,9 @@ export default function SearchForm() {
                     </div>
 
                     <div className="flex items-center justify-between pt-4 border-t border-gray-50">
-                      <div className="flex gap-4">
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Score</p>
-                          <p className="text-sm font-bold text-umn-blue">{result.clipscore.toFixed(2)}</p>
-                        </div>
-                        <div className="text-center">
-                          <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Mirip</p>
-                          <p className="text-sm font-bold text-green-600">{(result.similarity * 100).toFixed(0)}%</p>
-                        </div>
+                      <div className="text-center">
+                        <p className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold">Score</p>
+                        <p className="text-sm font-bold text-umn-blue">{result.clipscore.toFixed(2)}</p>
                       </div>
                       <button
                         onClick={() => handleSaveImage(result)}
@@ -371,15 +364,9 @@ export default function SearchForm() {
                   </p>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4 mb-8">
-                  <div className="p-4 rounded-xl bg-blue-50 border border-blue-100">
-                    <p className="text-xs text-blue-600 font-medium mb-1">CLIP Score</p>
-                    <p className="text-2xl font-bold text-umn-blue">{selectedImage.clipscore.toFixed(3)}</p>
-                  </div>
-                  <div className="p-4 rounded-xl bg-green-50 border border-green-100">
-                    <p className="text-xs text-green-600 font-medium mb-1">Kemiripan</p>
-                    <p className="text-2xl font-bold text-green-700">{(selectedImage.similarity * 100).toFixed(1)}%</p>
-                  </div>
+                <div className="p-4 rounded-xl bg-blue-50 border border-blue-100 mb-8">
+                  <p className="text-xs text-blue-600 font-medium mb-1">CLIP Score</p>
+                  <p className="text-2xl font-bold text-umn-blue">{selectedImage.clipscore.toFixed(3)}</p>
                 </div>
               </div>
 
