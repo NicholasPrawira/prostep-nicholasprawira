@@ -1,4 +1,3 @@
-import { ENDPOINTS } from './constants'
 import type { SearchResponse, ApiError } from './types'
 
 export class ApiClient {
