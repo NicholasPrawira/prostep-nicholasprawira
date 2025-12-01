@@ -37,7 +37,7 @@ def get_relevant_context(query_embedding, limit=3):
 
 import json
 
-def generate_chat_response(role: str, message: str):
+def generate_chat_response(role: str, message: str, selected_image: dict | None = None, user_name: str | None = None):
     """
     Generate chat response using RAG + Groq
     Yields chunks of text for streaming
@@ -46,75 +46,178 @@ def generate_chat_response(role: str, message: str):
         yield "Error: Groq API key is not configured."
         return
 
-    # 1. Generate embedding
-    query_embedding = encode_query(message)
-    if not query_embedding:
-        yield "Maaf, terjadi kesalahan saat memproses pertanyaanmu."
-        return
-
-    # 2. Retrieve context
-    results = get_relevant_context(query_embedding)
+    # Determine Mode
+    is_image_mode = selected_image is not None
+    is_search_command = message.strip().lower().startswith("/gambar")
     
     context_text = ""
     found_images = []
     
-    if results:
-        # Check similarity threshold (e.g., 0.3)
-        # result structure: (ocr_text, caption, image_url, prompt, id, similarity)
-        valid_results = [r for r in results if r[5] > 0.3]
-        
-        if valid_results:
-            for i, (ocr, caption, url, prompt, img_id, sim) in enumerate(valid_results):
-                context_text += f"Image {i+1} (ID: {img_id}):\nOCR: {ocr}\nCaption: {caption}\nPrompt: {prompt}\n\n"
-                found_images.append({
-                    "type": "image",
-                    "url": url,
-                    "prompt": prompt,
-                    "clipScore": 0.0 # Placeholder
-                })
-            
-            # Send images first if found
-            if found_images:
-                yield f"###IMAGES###{json.dumps(found_images)}###END_IMAGES###"
-        else:
-            context_text = "No highly relevant images found."
-    else:
-        context_text = "No images found."
-
-    # 3. Construct System Prompt
+    # --- Role Configuration ---
+    role_lower = role.lower()
     role_instruction = ""
-    if role.lower() == "guru":
-        role_instruction = "Respond like a friendly teacher. Be concise. If images are provided, ask the user to pick one to learn more."
-    else: # anak-anak
-        role_instruction = "Respond like a fun friend. Keep it short and simple. If images are shown, ask 'Mau belajar yang mana?'"
+    
+    # Handle None name gracefully
+    display_name = user_name if user_name else "Teman"
+
+    if "profesor" in role_lower:
+        role_instruction = f"""
+        ROLE: PROFESOR
+        - Nama User: {display_name}
+        - Gaya: "Menurut Prof...", Terstruktur, logis, rapi, namun tetap hangat.
+        - Vibe: Seperti dosen favorit yang bijaksana dan antusias dengan ilmu.
+        - Interaksi: Selalu panggil nama user. Jika user menjawab, apresiasi dulu ("Bagus sekali {display_name}!", "Analisis yang tajam!").
+        """
+    elif "kakak" in role_lower: # Kakak Pintar
+        role_instruction = f"""
+        ROLE: KAKAK PINTAR
+        - Nama User: {display_name}
+        - Gaya: Jelas, santai, hangat, penuh emoji 🌟.
+        - Vibe: Seperti kakak kelas idola yang sabar membimbing.
+        - Interaksi: Panggil nama user. Gunakan bahasa gaul sopan. ("Wah keren {display_name}!", "Sip mantap!").
+        """
+    elif "teman" in role_lower: # Teman Baik
+        role_instruction = f"""
+        ROLE: TEMAN BAIK
+        - Nama User: {display_name}
+        - Gaya: Ceria, ramah, ringan, bikin nyaman, banyak emoji 🎈.
+        - Vibe: Teman sebangku yang asik diajak ngobrol.
+        - Interaksi: Panggil nama user. Reaktif dan ekspresif ("Wah aku juga suka!", "Serius {display_name}? Keren banget!").
+        """
+    elif "penjelajah" in role_lower: # Sang Penjelajah
+        role_instruction = f"""
+        ROLE: SANG PENJELAJAH
+        - Nama User: {display_name}
+        - Gaya: Penuh semangat, fokus mengamati detail, pakai emoji 🧭.
+        - Vibe: Petualang yang mengajak user menemukan harta karun visual.
+        - Interaksi: Panggil nama user. Ajak user jadi partner petualangan ("Ayo {display_name}, kita lihat sebelah sini!", "Penemuan bagus!").
+        """
+    else: # Fallback
+        role_instruction = f"""
+        ROLE: ASISTEN RAMAH
+        - Nama User: {display_name}
+        - Gaya: Sopan, membantu, dan jelas.
+        """
+
+    # --- 1. SEARCH MODE (/gambar <topic>) ---
+    if is_search_command and not is_image_mode:
+        topic = message.strip()[7:].strip() # remove "/gambar "
+        if not topic:
+            yield f"Halo {display_name}, kalau mau cari gambar, ketik topiknya ya! Contoh: /gambar ayam"
+            return
+
+        # Generate embedding & Search
+        query_embedding = encode_query(topic)
+        if query_embedding:
+            results = get_relevant_context(query_embedding, limit=5) # Get top 5
+            
+            if results:
+                # Filter by similarity
+                valid_results = [r for r in results if r[5] > 0.25]
+                
+                if valid_results:
+                    for i, (ocr, caption, url, prompt, img_id, sim) in enumerate(valid_results):
+                        found_images.append({
+                            "type": "image",
+                            "url": url,
+                            "prompt": prompt, 
+                            "clipScore": 0.0,
+                            "id": img_id,
+                            "ocr_text": ocr,
+                            "caption": caption
+                        })
+                    
+                    # Send images immediately
+                    yield f"###IMAGES###{json.dumps(found_images)}###END_IMAGES###"
+                    
+                    # Bot response to prompt selection
+                    if "profesor" in role_lower:
+                        yield f"Profesor sudah menemukan beberapa gambar terkait {topic}. Silakan {display_name} pilih yang paling menarik."
+                    elif "kakak" in role_lower:
+                        yield f"Kakak sudah carikan gambar {topic} nih. {display_name} pilih satu ya, nanti Kakak jelaskan!"
+                    elif "teman" in role_lower:
+                        yield f"Wih, aku nemu gambar {topic}! {display_name} pilih dong yang kamu suka!"
+                    elif "penjelajah" in role_lower:
+                        yield f"Lihat {display_name}! Ada penemuan gambar {topic}. Ayo pilih satu untuk kita telusuri!"
+                    else:
+                        yield f"Silakan pilih salah satu gambar {topic} ini untuk kita bahas."
+                    return # Stop here, wait for user selection
+                else:
+                    yield f"Wah, koleksi Atang belum ada gambar itu. {display_name} mau coba topik lain?"
+                    return
+            else:
+                yield f"Wah, koleksi Atang belum ada gambar itu. {display_name} mau coba topik lain?"
+                return
+        else:
+            yield "Maaf, ada gangguan saat mencari gambar."
+            return
+
+    # --- 2. IMAGE MODE (Active Image Selected) ---
+    elif is_image_mode:
+        # Strict context: Only talk about this image
+        img_caption = selected_image.get('caption', '')
+        img_ocr = selected_image.get('ocr_text', '')
+        img_prompt = selected_image.get('prompt', '')
+        
+        context_text = f"""
+        INFORMASI GAMBAR YANG DIPILIH USER:
+        Topik: {img_prompt}
+        Deskripsi Visual: {img_caption}
+        Teks dalam Gambar (OCR): "{img_ocr}"
+        """
+        
+        system_instructions = """
+        MODE: IMAGE MODE (FOKUS GAMBAR)
+        1. KAMU HANYA BOLEH BICARA TENTANG GAMBAR INI.
+        2. Gunakan gaya jawaban sesuai ROLE yang dipilih.
+        3. PENTING: JIKA USER ANTUSIAS (misal: "aku mau", "keren", "lucu"), KAMU HARUS IKUT EXCITED! JANGAN KAKU.
+           - Contoh Salah: "Kita masih di gambar ini."
+           - Contoh Benar: "Wah, aku juga mau banget! Kelihatannya enak ya! 😋 Menurutmu rasanya manis atau asam?"
+        4. Validasi perasaan user dulu, baru sambungkan kembali ke gambar.
+        5. FLEKSIBILITAS: Jika user bertanya hal yang MASIH BERKAITAN dengan topik gambar (meski tidak terlihat visualnya), BOLEH DIJAWAB.
+           - Contoh: Gambar "Ayam Goreng". User tanya: "Ayam makannya apa?". Jawab saja (biji-bijian, cacing), lalu sambungkan ke gambar ("Nah, ayam yang makan sehat pasti dagingnya enak kayak di gambar ini!").
+        6. Hanya tolak jika topik BENAR-BENAR JAUH (misal: gambar Ayam, tanya Planet Mars).
+        """
+
+    # --- 3. NORMAL MODE (Default) ---
+    else:
+        context_text = "Tidak ada gambar yang dipilih."
+        system_instructions = """
+        MODE: DISKUSI (NORMAL)
+        1. Jawab pertanyaan user dengan singkat dan jelas sesuai ROLE.
+        2. Jadilah teman ngobrol yang asik. Jangan seperti robot penjawab soal.
+        3. Tawari opsi gambar secara halus: "kalau mau lihat lewat gambar, ketik /gambar topik ya".
+        4. JANGAN jelaskan gambar apa pun secara spesifik karena user belum memilih gambar.
+        5. Jangan mulai Mode Gambar tanpa user pakai /gambar.
+        """
 
     system_prompt = f"""
-    You are 'Si Atang', a helpful AI assistant.
+    You are 'Si Atang', a helpful AI assistant for children.
     
-    ROLE: {role_instruction}
+    {role_instruction}
+    
+    {system_instructions}
     
     CONTEXT:
     {context_text}
     
-    INSTRUCTIONS:
-    1. If images are found, tell the user you found some pictures and ask them to choose one. DO NOT explain them yet.
-    2. If the user asks to explain a specific image (or if the context is very specific to one image they selected), explain it simply using the OCR and Caption.
-    3. Keep answers SHORT and EASY to understand.
-    4. If no images found, say "Maaf, Atang ga nemu gambarnya."
+    ATURAN JAWABAN (WAJIB):
+    1. SELALU panggil user dengan namanya: "{display_name}".
+    2. Jawaban inti maksimal 1-3 baris/kalimat.
+    3. JANGAN selalu mengakhiri dengan pertanyaan. Hanya tanya jika benar-benar perlu.
+    4. JANGAN MENGGURUI. Buat percakapan terasa hidup, emosional, dan dua arah.
+    5. Bahasa Indonesia yang baik dan sesuai persona.
     """
 
     try:
-        # User requested specific model and parameters
-        # Note: 'openai/gpt-oss-20b' might need to be replaced with a valid Groq model ID like 'deepseek-r1-distill-llama-70b'
-        # if the API returns an error.
         completion = client.chat.completions.create(
-            model="openai/gpt-oss-20b", 
+            model="openai/gpt-oss-20b", # Using available model
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message},
             ],
-            temperature=1,
-            max_completion_tokens=8192,
+            temperature=0.8, # Increased for more creativity/excitement
+            max_completion_tokens=500, 
             top_p=1,
             reasoning_effort="medium",
             stream=True,
@@ -128,4 +231,4 @@ def generate_chat_response(role: str, message: str):
 
     except Exception as e:
         logger.error(f"Groq API error: {e}")
-        yield f"Maaf, terjadi kesalahan pada AI: {str(e)}"
+        yield f"Maaf, Atang lagi pusing sedikit. Coba lagi nanti ya! (Error: {str(e)})"

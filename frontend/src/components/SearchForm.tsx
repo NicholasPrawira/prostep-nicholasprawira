@@ -8,6 +8,8 @@ interface SearchResult {
   prompt: string
   image_url: string
   clipscore: number
+  ocr_text?: string
+  caption?: string
 }
 
 interface SearchResponse {
@@ -126,6 +128,23 @@ export default function SearchForm() {
       alert('Gagal menyimpan gambar')
     }
   }
+
+  const handleDragStart = (e: React.DragEvent, result: SearchResult) => {
+    // Set data for internal app drag-and-drop
+    const data = JSON.stringify({
+      type: 'image',
+      url: result.image_url,
+      prompt: result.prompt,
+      clipScore: result.clipscore,
+      caption: result.caption,
+      ocr_text: result.ocr_text
+    });
+    e.dataTransfer.setData('application/json', data);
+    e.dataTransfer.effectAllowed = 'copy';
+
+    // Also set text/plain for debugging or other targets
+    e.dataTransfer.setData('text/plain', result.prompt);
+  };
 
   // Sort results: valid images first, failed images last
   const sortedResults = [...results].sort((a, b) => {
@@ -252,7 +271,9 @@ export default function SearchForm() {
               {sortedResults.map((result, idx) => (
                 <div
                   key={result.image_url || idx}
-                  className={`group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 flex flex-col h-full ${failedImages.has(result.image_url) ? 'opacity-60 grayscale' : ''}`}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, result)}
+                  className={`group bg-white rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-300 border border-gray-100 flex flex-col h-full cursor-grab active:cursor-grabbing ${failedImages.has(result.image_url) ? 'opacity-60 grayscale' : ''}`}
                 >
                   <div className="relative aspect-[4/3] overflow-hidden bg-gray-100">
                     <img
