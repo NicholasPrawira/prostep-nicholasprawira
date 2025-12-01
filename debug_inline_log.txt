@@ -1,0 +1,17 @@
+--- Debugging RAG Inline ---
+Query: 'buah naga'
+Embedding generated (len: 384)
+Connecting to DB...
+Executing SQL query...
+Found 5 results:
+  ID: 854 | Sim: 0.5948 | Prompt: kendali buhaga bahasa indonesia
+
+  ID: 887 | Sim: 0.4292 | Prompt: a poster with the words kenali taman kebun desa tigarasa
+
+  ID: 906 | Sim: 0.4234 | Prompt: an information poster with the words, kenal perbiran tamanan vs tamanan
+
+  ID: 861 | Sim: 0.4136 | Prompt: kenaikan kerong mas hama pada sawah
+
+  ID: 848 | Sim: 0.3973 | Prompt: sirakan buah sira untuk anak
+
+DB Connection closed.

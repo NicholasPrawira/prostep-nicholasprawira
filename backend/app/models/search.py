@@ -7,6 +7,8 @@ class ImageResult(BaseModel):
     image_url: str
     clipscore: float
     similarity: float
+    ocr_text: str | None = None
+    caption: str | None = None
 
 
 class SearchResponse(BaseModel):

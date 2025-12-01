@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, X, Loader2 } from 'lucide-react';
 import ImagePreviewCard from './ImagePreviewCard';
 import ImageDetailModal from '../ImageDetailModal';
-import axios from 'axios';
+
 
 interface ImageAttachment {
     type: 'image';
@@ -26,6 +26,7 @@ interface ChatbotPanelProps {
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://127.0.0.1:8000';
 
 export default function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
+    const [role, setRole] = useState<'Guru' | 'Anak-anak' | null>(null);
     const [messages, setMessages] = useState<Message[]>([
         {
             id: '1',
@@ -47,7 +48,7 @@ export default function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
     }, [messages, isOpen, isTyping]);
 
     const handleSend = async () => {
-        if (!inputValue.trim()) return;
+        if (!inputValue.trim() || !role) return;
 
         const userMsg: Message = {
             id: Date.now().toString(),
@@ -60,48 +61,87 @@ export default function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
         setIsTyping(true);
 
         try {
-            // Call backend API
-            const response = await axios.get(`${API_BASE_URL}/search`, {
-                params: { q: userMsg.text },
+            const response = await fetch(`${API_BASE_URL}/api/chat`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    role: role,
+                    message: userMsg.text,
+                }),
             });
 
-            const results = response.data.results;
+            if (!response.ok) throw new Error('Network response was not ok');
 
-            if (results && results.length > 0) {
-                const attachments: ImageAttachment[] = results.slice(0, 3).map((res: any) => ({
-                    type: 'image',
-                    url: res.image_url,
-                    prompt: res.prompt,
-                    clipScore: res.clipscore,
-                }));
+            const reader = response.body?.getReader();
+            const decoder = new TextDecoder();
+            let botMsgId = (Date.now() + 1).toString();
+            let botText = '';
+            let fullResponse = '';
 
-                const botMsg: Message = {
-                    id: (Date.now() + 1).toString(),
-                    text: `Berikut adalah ${results.length > 3 ? 'beberapa' : ''} gambar yang saya temukan untuk "${userMsg.text}":`,
+            setMessages((prev) => [
+                ...prev,
+                {
+                    id: botMsgId,
+                    text: '',
                     sender: 'bot',
-                    attachments: attachments,
-                };
-                setMessages((prev) => [...prev, botMsg]);
-            } else {
-                const botMsg: Message = {
-                    id: (Date.now() + 1).toString(),
-                    text: 'Maaf, saya tidak menemukan gambar yang cocok dengan deskripsi tersebut.',
-                    sender: 'bot',
-                };
-                setMessages((prev) => [...prev, botMsg]);
+                },
+            ]);
+
+            while (true) {
+                const { done, value } = await reader!.read();
+                if (done) break;
+
+                const chunk = decoder.decode(value, { stream: true });
+                fullResponse += chunk;
+
+                // Check for images
+                if (fullResponse.includes('###IMAGES###') && fullResponse.includes('###END_IMAGES###')) {
+                    const start = fullResponse.indexOf('###IMAGES###');
+                    const end = fullResponse.indexOf('###END_IMAGES###');
+                    const jsonStr = fullResponse.substring(start + 12, end);
+                    try {
+                        const images = JSON.parse(jsonStr);
+                        // Remove the image part from text
+                        botText = fullResponse.substring(0, start) + fullResponse.substring(end + 16);
+
+                        setMessages((prev) =>
+                            prev.map((msg) =>
+                                msg.id === botMsgId ? { ...msg, text: botText, attachments: images } : msg
+                            )
+                        );
+                    } catch (e) {
+                        console.error("Failed to parse images", e);
+                    }
+                } else {
+                    // Clean up partial tags if any (simple approach: just show text)
+                    botText = fullResponse.replace(/###IMAGES###.*?###END_IMAGES###/s, '');
+
+                    setMessages((prev) =>
+                        prev.map((msg) =>
+                            msg.id === botMsgId ? { ...msg, text: botText } : msg
+                        )
+                    );
+                }
             }
 
         } catch (error) {
-            console.error('Error fetching images:', error);
+            console.error('Error fetching chat response:', error);
             const botMsg: Message = {
                 id: (Date.now() + 1).toString(),
-                text: 'Maaf, terjadi kesalahan saat mencari gambar. Pastikan server backend berjalan.',
+                text: 'Maaf, terjadi kesalahan saat menghubungi Si Atang. Coba lagi ya!',
                 sender: 'bot',
             };
             setMessages((prev) => [...prev, botMsg]);
         } finally {
             setIsTyping(false);
         }
+    };
+
+    const handleImageClick = (att: ImageAttachment) => {
+        setInputValue(`Coba jelaskan gambar ini: ${att.prompt}`);
+        // Optional: focus input
     };
 
     const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -139,71 +179,111 @@ export default function ChatbotPanel({ isOpen, onClose }: ChatbotPanelProps) {
                     </button>
                 </div>
 
-                {/* Messages */}
-                <div className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-4">
-                    {messages.map((msg) => (
-                        <div
-                            key={msg.id}
-                            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                            <div
-                                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm ${msg.sender === 'user'
-                                    ? 'bg-indigo-600 text-white rounded-br-none'
-                                    : 'bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-none'
-                                    }`}
-                            >
-                                <p>{msg.text}</p>
-                                {msg.attachments && msg.attachments.length > 0 && (
-                                    <div className="mt-3 flex gap-2 overflow-x-auto pb-2 snap-x">
-                                        {msg.attachments.map((att, idx) => (
-                                            <div key={idx} className="min-w-[200px] snap-center">
-                                                <ImagePreviewCard
-                                                    thumbnailUrl={att.url}
-                                                    title={att.prompt}
-                                                    onClick={() => setSelectedImage(att)}
-                                                />
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                    {isTyping && (
-                        <div className="flex justify-start">
-                            <div className="bg-white text-gray-500 shadow-sm border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 text-sm flex items-center gap-2">
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                                <span>Sedang mencari...</span>
-                            </div>
-                        </div>
-                    )}
-                    <div ref={messagesEndRef} />
-                </div>
+                {/* Role Selection or Chat */}
+                {!role ? (
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-4 bg-gray-50">
+                        <h3 className="text-lg font-bold text-gray-800 text-center">Pilih Teman Belajarmu!</h3>
+                        <p className="text-sm text-gray-500 text-center mb-4">Kamu ingin Atang menjadi seperti apa?</p>
 
-                {/* Input Area */}
-                <div className="border-t bg-white p-3">
-                    <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
-                        <textarea
-                            value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Ketik pesan..."
-                            className="max-h-32 min-h-[44px] w-full resize-none bg-transparent px-2 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
-                            rows={1}
-                            disabled={isTyping}
-                        />
                         <button
-                            onClick={handleSend}
-                            disabled={!inputValue.trim() || isTyping}
-                            className="mb-1 flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white transition-all hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                            onClick={() => setRole('Guru')}
+                            className="w-full py-3 px-4 bg-white border-2 border-indigo-100 rounded-xl shadow-sm hover:border-indigo-500 hover:bg-indigo-50 transition-all flex items-center gap-3 group"
                         >
-                            <Send className="h-4 w-4" />
+                            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">👨‍🏫</div>
+                            <div className="text-left">
+                                <p className="font-bold text-gray-800">Guru</p>
+                                <p className="text-xs text-gray-500">Penjelasan lengkap & terstruktur</p>
+                            </div>
+                        </button>
+
+                        <button
+                            onClick={() => setRole('Anak-anak')}
+                            className="w-full py-3 px-4 bg-white border-2 border-orange-100 rounded-xl shadow-sm hover:border-orange-500 hover:bg-orange-50 transition-all flex items-center gap-3 group"
+                        >
+                            <div className="h-10 w-10 rounded-full bg-orange-100 flex items-center justify-center text-xl group-hover:scale-110 transition-transform">🎈</div>
+                            <div className="text-left">
+                                <p className="font-bold text-gray-800">Teman</p>
+                                <p className="text-xs text-gray-500">Bahasa santai & seru</p>
+                            </div>
                         </button>
                     </div>
-                    <p className="mt-2 text-center text-[10px] text-gray-400">
-                        AI kadang membuat kesalahan. Selalu cek ulang hasilnya, ya!
-                    </p>
-                </div>
+                ) : (
+                    <>
+                        {/* Messages */}
+                        <div className="flex-1 overflow-y-auto bg-gray-50 p-4 space-y-4">
+                            {messages.map((msg) => (
+                                <div
+                                    key={msg.id}
+                                    className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+                                >
+                                    <div
+                                        className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm whitespace-pre-wrap ${msg.sender === 'user'
+                                            ? 'bg-indigo-600 text-white rounded-br-none'
+                                            : 'bg-white text-gray-800 shadow-sm border border-gray-100 rounded-bl-none'
+                                            }`}
+                                    >
+                                        <p>{msg.text}</p>
+                                        {msg.attachments && msg.attachments.length > 0 && (
+                                            <div className="mt-3 flex gap-2 overflow-x-auto pb-2 snap-x">
+                                                {msg.attachments.map((att, idx) => (
+                                                    <div key={idx} className="min-w-[200px] snap-center">
+                                                        <ImagePreviewCard
+                                                            thumbnailUrl={att.url}
+                                                            title={att.prompt}
+                                                            onClick={() => handleImageClick(att)}
+                                                        />
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                            {isTyping && (
+                                <div className="flex justify-start">
+                                    <div className="bg-white text-gray-500 shadow-sm border border-gray-100 rounded-2xl rounded-bl-none px-4 py-3 text-sm flex items-center gap-2">
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                        <span>Sedang mengetik...</span>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
+
+                        {/* Input Area */}
+                        <div className="border-t bg-white p-3">
+                            <div className="flex items-end gap-2 rounded-xl border border-gray-200 bg-gray-50 p-2 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 transition-all">
+                                <textarea
+                                    value={inputValue}
+                                    onChange={(e) => setInputValue(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    placeholder={`Tanya Atang sebagai ${role}...`}
+                                    className="max-h-32 min-h-[44px] w-full resize-none bg-transparent px-2 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none"
+                                    rows={1}
+                                    disabled={isTyping}
+                                />
+                                <button
+                                    onClick={handleSend}
+                                    disabled={!inputValue.trim() || isTyping}
+                                    className="mb-1 flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white transition-all hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                                >
+                                    <Send className="h-4 w-4" />
+                                </button>
+                            </div>
+                            <div className="flex justify-between items-center mt-2 px-1">
+                                <button
+                                    onClick={() => setRole(null)}
+                                    className="text-[10px] text-indigo-500 hover:text-indigo-700 font-medium"
+                                >
+                                    Ganti Peran
+                                </button>
+                                <p className="text-[10px] text-gray-400">
+                                    AI kadang membuat kesalahan. Selalu cek ulang hasilnya, ya!
+                                </p>
+                            </div>
+                        </div>
+                    </>
+                )}
             </div>
 
             {/* Image Modal */}

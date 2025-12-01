@@ -1,11 +1,11 @@
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from app.services import search_images
-from app.services.search_service import search_images  # Keep existing import
+from app.services.search_service import search_images
 from app.models import HealthResponse, SearchResponse
 from app.utils import logger
 from app.database import get_connection, close_connection
 from app.models.search import ImageResult
+from app.routers import chat
 
 app = FastAPI(
     title="Tigaraksa Image Search API",
@@ -21,6 +21,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(chat.router, prefix="/api", tags=["chat"])
 
 @app.get("/health", response_model=HealthResponse)
 def health_check():
