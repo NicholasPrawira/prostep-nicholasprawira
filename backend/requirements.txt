@@ -3,3 +3,10 @@ uvicorn[standard]==0.24.0
 psycopg2-binary==2.9.9
 python-dotenv==1.0.0
 pydantic==2.5.0
+sentence-transformers==2.2.2
+groq==0.4.2
+numpy
+torch
+transformers
+tqdm
+requests
