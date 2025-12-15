@@ -5,8 +5,8 @@ import os
 
 logger = logging.getLogger(__name__)
 
-# Hugging Face Inference API endpoint
-HF_API_URL = "https://api-inference.huggingface.co/pipeline/feature-extraction"
+# Hugging Face Inference API endpoint (updated to new router)
+HF_API_URL = "https://router.huggingface.co/api/inference/pipeline/feature-extraction"
 HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 def encode_query(query: str) -> Optional[List[float]]:
