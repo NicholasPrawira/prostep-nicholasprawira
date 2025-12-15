@@ -2,16 +2,17 @@ import logging
 from typing import Optional, List
 import os
 from functools import lru_cache
-from huggingface_hub import InferenceClient
+import requests
 
 logger = logging.getLogger(__name__)
 
-# Hugging Face Model for embeddings
-HF_MODEL = "sentence-transformers/paraphrase-MiniLM-L6-v2"
+# New Hugging Face router endpoint
+HF_API_URL = "https://router.huggingface.co/models/sentence-transformers/paraphrase-MiniLM-L6-v2"
+HF_TIMEOUT = 30
 
 @lru_cache(maxsize=128)
 def encode_query(query: str) -> Optional[List[float]]:
-    """Generate embedding using Hugging Face InferenceClient"""
+    """Generate embedding using Hugging Face router API"""
     hf_token = os.getenv("HUGGINGFACE_API_KEY")
     
     if not hf_token:
@@ -19,17 +20,27 @@ def encode_query(query: str) -> Optional[List[float]]:
         return None
     
     try:
-        # Initialize InferenceClient with token parameter (NOT api_key)
-        client = InferenceClient(token=hf_token)
+        headers = {"Authorization": f"Bearer {hf_token}"}
+        payload = {"inputs": query}
         
-        # Feature extraction returns embeddings directly
-        embedding = client.feature_extraction(
-            text=query,
-            model=HF_MODEL
+        response = requests.post(
+            HF_API_URL,
+            headers=headers,
+            json=payload,
+            timeout=HF_TIMEOUT
         )
         
-        logger.info(f"Embedding generated successfully for query: {query[:50]}")
-        return embedding
+        if response.status_code == 200:
+            embedding = response.json()
+            logger.info(f"Embedding generated successfully for query: {query[:50]}")
+            return embedding
+        else:
+            logger.error(f"HF API error: {response.status_code} - {response.text}")
+            return None
+            
+    except requests.exceptions.Timeout:
+        logger.error(f"Timeout calling Hugging Face API")
+        return None
         
     except Exception as e:
         logger.error(f"Error generating embedding via HF: {e}")
