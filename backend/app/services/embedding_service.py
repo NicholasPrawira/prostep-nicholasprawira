@@ -7,7 +7,7 @@ from huggingface_hub import InferenceClient
 logger = logging.getLogger(__name__)
 
 # Hugging Face Inference Client
-HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+HF_MODEL = "sentence-transformers/paraphrase-MiniLM-L6-v2"
 
 @lru_cache(maxsize=128)
 def encode_query(query: str) -> Optional[List[float]]:
