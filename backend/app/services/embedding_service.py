@@ -19,9 +19,7 @@ def encode_query(query: str) -> Optional[List[float]]:
         return None
     
     try:
-        client = InferenceClient(
-            api_key=hf_token
-        )
+        client = InferenceClient(token=hf_token)
         
         # Use feature extraction to get embeddings
         embedding = client.feature_extraction(
