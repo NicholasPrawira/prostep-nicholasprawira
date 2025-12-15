@@ -1,11 +1,7 @@
-sentence-transformers==2.2.2
-transformers==4.35.2
-torch==2.0.1
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
-psycopg2-binary==2.9.9    # hapus jika tidak pakai Postgres
-python-dotenv==1.0.0     # opsional
-requests==2.32.5         # opsional
-groq==0.4.2              # opsional, jika pakai GROQ
-numpy==1.26.2            # opsional
-tqdm==4.67.1             # opsional
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+requests==2.32.5
+groq==0.4.2
+pydantic==2.5.0
