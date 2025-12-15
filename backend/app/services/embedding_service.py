@@ -6,7 +6,7 @@ import os
 logger = logging.getLogger(__name__)
 
 # Hugging Face Inference API endpoint (updated to new router)
-HF_API_URL = "https://router.huggingface.co/api/inference/pipeline/feature-extraction"
+HF_API_URL = "https://router.huggingface.co/models/sentence-transformers/all-MiniLM-L6-v2"
 HF_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
 
 def encode_query(query: str) -> Optional[List[float]]:
@@ -23,7 +23,7 @@ def encode_query(query: str) -> Optional[List[float]]:
         payload = {"inputs": query}
         
         response = requests.post(
-            f"{HF_API_URL}/{HF_MODEL}",
+            HF_API_URL,
             headers=headers,
             json=payload,
             timeout=30
