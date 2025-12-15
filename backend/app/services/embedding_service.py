@@ -1,35 +1,31 @@
 import logging
 from typing import Optional, List
-import os
 from functools import lru_cache
-from huggingface_hub import InferenceClient
+from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
-# Hugging Face Inference Client
-HF_MODEL = "sentence-transformers/paraphrase-MiniLM-L6-v2"
+# Load sentence-transformers model locally
+try:
+    model = SentenceTransformer('sentence-transformers/paraphrase-MiniLM-L6-v2')
+    logger.info("Sentence-transformers model loaded successfully")
+except Exception as e:
+    logger.error(f"Failed to load sentence-transformers model: {e}")
+    model = None
 
 @lru_cache(maxsize=128)
 def encode_query(query: str) -> Optional[List[float]]:
-    """Generate embedding using Hugging Face InferenceClient with retry logic"""
-    hf_token = os.getenv("HUGGINGFACE_API_KEY")
-    
-    if not hf_token:
-        logger.error("HUGGINGFACE_API_KEY not set in environment")
+    """Generate embedding using local sentence-transformers model"""
+    if model is None:
+        logger.error("Sentence-transformers model not loaded")
         return None
     
     try:
-        client = InferenceClient(token=hf_token)
-        
-        # Use feature extraction to get embeddings
-        embedding = client.feature_extraction(
-            text=query,
-            model=HF_MODEL
-        )
-        
+        # Generate embedding using the local model
+        embedding = model.encode(query, convert_to_tensor=False).tolist()
         logger.info(f"Embedding generated successfully for query: {query[:50]}")
         return embedding
         
     except Exception as e:
-        logger.error(f"Error generating embedding via HF: {e}")
+        logger.error(f"Error generating embedding: {e}")
         return None
