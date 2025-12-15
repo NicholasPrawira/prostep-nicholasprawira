@@ -1,4 +1,4 @@
-import httpx
+import requests
 import json
 from app.config.settings import GROQ_API_KEY
 from app.services.embedding_service import encode_query
@@ -226,16 +226,19 @@ def generate_chat_response(role: str, message: str, selected_image: dict | None 
             "stream": True,
         }
         
-        with httpx.stream("POST", GROQ_API_URL, headers=headers, json=payload) as response:
-            if response.status_code != 200:
-                error_detail = response.text
-                logger.error(f"Groq API error: {response.status_code} - {error_detail}")
-                yield f"Maaf, Atang lagi pusing sedikit. Coba lagi nanti ya! (Error: {response.status_code})"
-                return
-            
-            for line in response.iter_lines():
-                if line.startswith("data: "):
-                    data_str = line[6:]
+        response = requests.post(GROQ_API_URL, headers=headers, json=payload, stream=True, timeout=60)
+        
+        if response.status_code != 200:
+            error_detail = response.text
+            logger.error(f"Groq API error: {response.status_code} - {error_detail}")
+            yield f"Maaf, Atang lagi pusing sedikit. Coba lagi nanti ya! (Error: {response.status_code})"
+            return
+        
+        for line in response.iter_lines():
+            if line:
+                line_str = line.decode('utf-8') if isinstance(line, bytes) else line
+                if line_str.startswith("data: "):
+                    data_str = line_str[6:].strip()
                     if data_str == "[DONE]":
                         break
                     try:
