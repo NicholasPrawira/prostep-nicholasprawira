@@ -1,4 +1,5 @@
-from groq import Groq
+import requests
+import json
 from app.config.settings import GROQ_API_KEY
 from app.services.embedding_service import encode_query
 from app.database import get_connection, close_connection
@@ -9,7 +10,7 @@ logger = logging.getLogger(__name__)
 if not GROQ_API_KEY:
     logger.warning("GROQ_API_KEY is not set. Chat features will not work.")
 
-client = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
+GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
 def get_relevant_context(query_embedding, limit=3):
     """Retrieve relevant images from database using vector similarity"""
@@ -35,14 +36,12 @@ def get_relevant_context(query_embedding, limit=3):
     finally:
         close_connection(conn)
 
-import json
-
 def generate_chat_response(role: str, message: str, selected_image: dict | None = None, user_name: str | None = None):
     """
-    Generate chat response using RAG + Groq
+    Generate chat response using RAG + Groq API
     Yields chunks of text for streaming
     """
-    if not client:
+    if not GROQ_API_KEY:
         yield "Error: Groq API key is not configured."
         return
 
@@ -210,25 +209,48 @@ def generate_chat_response(role: str, message: str, selected_image: dict | None 
     """
 
     try:
-        completion = client.chat.completions.create(
-            model="openai/gpt-oss-20b", # Using available model
-            messages=[
+        headers = {
+            "Authorization": f"Bearer {GROQ_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": "llama-3.1-70b-versatile",
+            "messages": [
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": message},
             ],
-            temperature=0.8, # Increased for more creativity/excitement
-            max_completion_tokens=500, 
-            top_p=1,
-            reasoning_effort="medium",
-            stream=True,
-            stop=None,
-        )
-
-        for chunk in completion:
-            content = chunk.choices[0].delta.content
-            if content:
-                yield content
-
+            "temperature": 0.8,
+            "max_tokens": 500,
+            "top_p": 1,
+            "stream": True,
+        }
+        
+        response = requests.post(GROQ_API_URL, headers=headers, json=payload, stream=True, timeout=60)
+        
+        if response.status_code != 200:
+            error_detail = response.text
+            logger.error(f"Groq API error: {response.status_code} - {error_detail}")
+            yield f"Maaf, Atang lagi pusing sedikit. Coba lagi nanti ya! (Error: {response.status_code})"
+            return
+        
+        for line in response.iter_lines():
+            if line:
+                line_str = line.decode('utf-8') if isinstance(line, bytes) else line
+                if line_str.startswith("data: "):
+                    data_str = line_str[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        data = json.loads(data_str)
+                        if data.get("choices") and len(data["choices"]) > 0:
+                            delta = data["choices"][0].get("delta", {})
+                            content = delta.get("content", "")
+                            if content:
+                                yield content
+                    except json.JSONDecodeError:
+                        continue
+                        
     except Exception as e:
         logger.error(f"Groq API error: {e}")
         yield f"Maaf, Atang lagi pusing sedikit. Coba lagi nanti ya! (Error: {str(e)})"
