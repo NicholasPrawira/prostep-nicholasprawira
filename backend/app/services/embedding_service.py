@@ -1,47 +1,34 @@
 import logging
 from typing import Optional, List
-import os
 from functools import lru_cache
-import requests
+from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
 
-# New Hugging Face router endpoint
-HF_API_URL = "https://router.huggingface.co/models/sentence-transformers/paraphrase-MiniLM-L6-v2"
-HF_TIMEOUT = 30
+# Initialize sentence transformer model (cached in memory)
+_model = None
+
+def get_model():
+    """Load and cache the sentence transformer model"""
+    global _model
+    if _model is None:
+        try:
+            logger.info("Loading sentence-transformers model: paraphrase-MiniLM-L6-v2")
+            _model = SentenceTransformer('paraphrase-MiniLM-L6-v2')
+            logger.info("Model loaded successfully")
+        except Exception as e:
+            logger.error(f"Error loading sentence transformer model: {e}")
+            raise
+    return _model
 
 @lru_cache(maxsize=128)
 def encode_query(query: str) -> Optional[List[float]]:
-    """Generate embedding using Hugging Face router API"""
-    hf_token = os.getenv("HUGGINGFACE_API_KEY")
-    
-    if not hf_token:
-        logger.error("HUGGINGFACE_API_KEY not set in environment")
-        return None
-    
+    """Generate embedding using local sentence-transformers model"""
     try:
-        headers = {"Authorization": f"Bearer {hf_token}"}
-        payload = {"inputs": query}
-        
-        response = requests.post(
-            HF_API_URL,
-            headers=headers,
-            json=payload,
-            timeout=HF_TIMEOUT
-        )
-        
-        if response.status_code == 200:
-            embedding = response.json()
-            logger.info(f"Embedding generated successfully for query: {query[:50]}")
-            return embedding
-        else:
-            logger.error(f"HF API error: {response.status_code} - {response.text}")
-            return None
-            
-    except requests.exceptions.Timeout:
-        logger.error(f"Timeout calling Hugging Face API")
-        return None
-        
+        model = get_model()
+        embedding = model.encode(query).tolist()
+        logger.info(f"Embedding generated successfully for query: {query[:50]}")
+        return embedding
     except Exception as e:
-        logger.error(f"Error generating embedding via HF: {e}")
+        logger.error(f"Error generating embedding: {e}")
         return None
