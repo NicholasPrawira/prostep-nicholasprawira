@@ -12,7 +12,7 @@ if not GROQ_API_KEY:
 
 GROQ_API_URL = "https://api.groq.com/openai/v1/chat/completions"
 
-def get_relevant_context(query_embedding, limit=3):
+def get_relevant_context(query_embedding, limit=10):
     """Retrieve relevant images from database using vector similarity"""
     conn = None
     try:
@@ -20,9 +20,10 @@ def get_relevant_context(query_embedding, limit=3):
         cur = conn.cursor()
         
         # Using cosine distance (<=>) for similarity search
-        # Note: pgvector needs to be installed in the DB
+        # Get more results initially, then filter by text matching in Python
         cur.execute("""
-            SELECT ocr_text, caption, image_url, caption, id, 1 - (embedding <=> %s::vector) as similarity
+            SELECT ocr_text, caption, image_url, caption, id, 
+                   1 - (embedding <=> %s::vector) as similarity
             FROM visionimages
             ORDER BY embedding <=> %s::vector
             LIMIT %s
@@ -108,11 +109,52 @@ def generate_chat_response(role: str, message: str, selected_image: dict | None 
         # Generate embedding & Search
         query_embedding = encode_query(topic)
         if query_embedding:
-            results = get_relevant_context(query_embedding, limit=5) # Get top 5
+            # Get more results initially (limit=10), then filter strictly
+            results = get_relevant_context(query_embedding, limit=10)
             
             if results:
-                # Filter by similarity
-                valid_results = [r for r in results if r[5] > 0.25]
+                # Stricter filtering: higher similarity threshold and text validation
+                # Threshold increased from 0.25 to 0.4 for better accuracy
+                # Also validate that topic terms appear in the result
+                topic_lower = topic.lower()
+                topic_terms = topic_lower.split()
+                
+                valid_results = []
+                for r in results:
+                    ocr, caption, url, prompt, img_id, sim = r
+                    
+                    # Check similarity threshold (increased from 0.25 to 0.4)
+                    if sim < 0.4:
+                        continue
+                    
+                    # Additional validation: ensure topic appears in text fields
+                    # Combine all text fields for checking
+                    all_text = " ".join([
+                        str(ocr) if ocr else "",
+                        str(caption) if caption else "",
+                        str(prompt) if prompt else ""
+                    ]).lower()
+                    
+                    # Additional validation: ensure topic appears in text fields
+                    # This ensures we don't return completely unrelated results
+                    # For short terms (1-2 chars), skip text validation to avoid false negatives
+                    topic_found = False
+                    if topic_terms:
+                        # Check if main topic term (longest or first) appears in text
+                        main_term = max(topic_terms, key=len) if topic_terms else ""
+                        if len(main_term) >= 3:  # Only validate for terms 3+ characters
+                            topic_found = main_term in all_text
+                        else:
+                            # For very short terms, rely on similarity score only
+                            topic_found = True
+                    
+                    # Accept if: text matches OR very high similarity (>0.6)
+                    if topic_found or sim > 0.6:
+                        valid_results.append(r)
+                    
+                    # Limit to top 5 most relevant
+                    if len(valid_results) >= 5:
+                        break
                 
                 if valid_results:
                     for i, (ocr, caption, url, prompt, img_id, sim) in enumerate(valid_results):

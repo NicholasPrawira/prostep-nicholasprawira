@@ -5,73 +5,92 @@ from typing import List
 
 
 def search_images(query: str, limit: int = 10) -> SearchResponse:
-    """Search for images similar to query"""
+    """Search for images similar to query with improved accuracy"""
     conn = None
     try:
         conn = get_connection()
         cur = conn.cursor()
 
-        # Split the query into individual terms for more flexible matching
-        query_terms = query.split()
-        
-        # Create OR conditions for each term with different matching patterns
-        if query_terms:
-            # For each term, we'll match with ILIKE and also check if it appears in the prompt
-            or_conditions = " OR ".join([
-                f"(prompt ILIKE %s OR prompt ILIKE %s OR prompt ILIKE %s)" 
-                for _ in query_terms
-            ])
-            
-            # Create parameters for different matching patterns:
-            # 1. %term% - contains the term
-            # 2. %Term% - contains the capitalized term
-            # 3. %TERM% - contains the uppercase term
-            like_params = []
-            for term in query_terms:
-                like_params.extend([f'%{term}%', f'%{term.capitalize()}%', f'%{term.upper()}%'])
-            
-            cur.execute(
-                f"""
-                SELECT prompt, image_url, clipscore, 1.0 AS similarity
-                FROM images
-                WHERE image_url IS NOT NULL AND ({or_conditions})
-                ORDER BY prompt
-                LIMIT %s;
-                """,
-                like_params + [limit],
-            )
-        else:
-            # Fallback to simple matching if no terms
-            cur.execute(
-                """
-                SELECT prompt, image_url, clipscore, 1.0 AS similarity
-                FROM images
-                WHERE image_url IS NOT NULL AND (
-                    prompt ILIKE %s OR 
-                    prompt ILIKE %s OR 
-                    prompt ILIKE %s
-                )
-                ORDER BY prompt
-                LIMIT %s;
-                """,
-                (f'%{query}%', f'%{query.capitalize()}%', f'%{query.upper()}%', limit),
-            )
+        # Clean and normalize the query
+        query = query.strip()
+        if not query:
+            return SearchResponse(query=query, results=[])
 
+        # Split the query into individual terms
+        query_terms = [term.strip() for term in query.split() if term.strip()]
+        
+        if not query_terms:
+            return SearchResponse(query=query, results=[])
+
+        # Build search with priority:
+        # 1. Exact phrase match (highest priority)
+        # 2. All terms present (AND logic) - each term must appear
+        # 3. Use word boundary patterns for better accuracy
+        
+        exact_phrase = f'%{query}%'
+        
+        # Build AND conditions - all terms must be present in the prompt
+        # For each term, check if it appears as a word (with spaces or at boundaries)
+        and_conditions = []
+        params = []
+        
+        for term in query_terms:
+            # Patterns to match the term as a complete word:
+            # - Space before and after: " term " (word in middle)
+            # - At start with space after: "term " (word at start)
+            # - At end with space before: " term" (word at end)
+            # - Exact match: "term" (whole string)
+            # - Simple contains: "%term%" (fallback for flexibility)
+            term_patterns = [
+                f'% {term} %',    # word in middle: " ayam "
+                f'{term} %',      # at start: "ayam "
+                f'% {term}',      # at end: " ayam"
+                f'{term}',        # exact: "ayam"
+                f'%{term}%',       # contains anywhere (fallback)
+            ]
+            
+            # Build OR condition for this term
+            term_condition = " OR ".join(["prompt ILIKE %s" for _ in term_patterns])
+            and_conditions.append(f"({term_condition})")
+            params.extend(term_patterns)
+        
+        # Combine all AND conditions
+        where_clause = " AND ".join(and_conditions)
+        
+        # Execute query with priority ordering
+        # Priority: exact phrase match first, then by number of matching terms
+        cur.execute(
+            f"""
+            SELECT prompt, image_url, clipscore,
+                   CASE 
+                       WHEN prompt ILIKE %s THEN 1.0
+                       ELSE 0.9
+                   END AS similarity
+            FROM images
+            WHERE image_url IS NOT NULL AND ({where_clause})
+            ORDER BY 
+                CASE WHEN prompt ILIKE %s THEN 1 ELSE 2 END,
+                prompt
+            LIMIT %s;
+            """,
+            [exact_phrase] + params + [exact_phrase, limit],
+        )
+        
         results = cur.fetchall()
         cur.close()
 
-        # If no results found, try even broader search
+        # If no results with AND logic, try with exact phrase only
         if not results:
             cur = conn.cursor()
             cur.execute(
                 """
                 SELECT prompt, image_url, clipscore, 1.0 AS similarity
                 FROM images
-                WHERE image_url IS NOT NULL
-                ORDER BY RANDOM()
+                WHERE image_url IS NOT NULL AND prompt ILIKE %s
+                ORDER BY prompt
                 LIMIT %s;
                 """,
-                (limit // 2,)  # Return fewer results for random search
+                (exact_phrase, limit),
             )
             results = cur.fetchall()
             cur.close()
