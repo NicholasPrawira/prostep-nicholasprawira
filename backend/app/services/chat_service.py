@@ -109,25 +109,24 @@ def generate_chat_response(role: str, message: str, selected_image: dict | None 
         # Generate embedding & Search
         query_embedding = encode_query(topic)
         if query_embedding:
-            # Get more results initially (limit=10), then filter strictly
-            results = get_relevant_context(query_embedding, limit=10)
+            # Get more results initially (limit=20), then filter
+            results = get_relevant_context(query_embedding, limit=20)
             
             if results:
-                # Stricter filtering: higher similarity threshold and text validation
-                # Threshold increased from 0.25 to 0.4 for better accuracy
-                # Also validate that topic terms appear in the result
+                # More flexible filtering: lower threshold and optional text validation
                 topic_lower = topic.lower()
                 topic_terms = topic_lower.split()
                 
                 valid_results = []
+                
+                # Try with strict criteria first (similarity > 0.25 and text match)
                 for r in results:
                     ocr, caption, url, prompt, img_id, sim = r
                     
-                    # Check similarity threshold (increased from 0.25 to 0.4)
-                    if sim < 0.4:
+                    # Lower threshold from 0.4 to 0.25 for more results
+                    if sim < 0.25:
                         continue
                     
-                    # Additional validation: ensure topic appears in text fields
                     # Combine all text fields for checking
                     all_text = " ".join([
                         str(ocr) if ocr else "",
@@ -135,26 +134,35 @@ def generate_chat_response(role: str, message: str, selected_image: dict | None 
                         str(prompt) if prompt else ""
                     ]).lower()
                     
-                    # Additional validation: ensure topic appears in text fields
-                    # This ensures we don't return completely unrelated results
-                    # For short terms (1-2 chars), skip text validation to avoid false negatives
+                    # More flexible text validation - check if any term matches
                     topic_found = False
                     if topic_terms:
-                        # Check if main topic term (longest or first) appears in text
-                        main_term = max(topic_terms, key=len) if topic_terms else ""
-                        if len(main_term) >= 3:  # Only validate for terms 3+ characters
-                            topic_found = main_term in all_text
-                        else:
-                            # For very short terms, rely on similarity score only
-                            topic_found = True
+                        # Check if any term appears in text (more flexible)
+                        for term in topic_terms:
+                            if len(term) >= 2 and term in all_text:  # Lowered from 3 to 2 chars
+                                topic_found = True
+                                break
                     
-                    # Accept if: text matches OR very high similarity (>0.6)
-                    if topic_found or sim > 0.6:
+                    # Accept if: text matches OR high similarity (>0.5) OR medium similarity (>0.35) with any text match
+                    if topic_found or sim > 0.5 or (sim > 0.35 and all_text):
                         valid_results.append(r)
                     
                     # Limit to top 5 most relevant
                     if len(valid_results) >= 5:
                         break
+                
+                # If no results with strict criteria, try with even more lenient criteria
+                if not valid_results:
+                    for r in results:
+                        ocr, caption, url, prompt, img_id, sim = r
+                        
+                        # Very lenient threshold (0.2)
+                        if sim >= 0.2:
+                            valid_results.append(r)
+                        
+                        # Limit to top 5
+                        if len(valid_results) >= 5:
+                            break
                 
                 if valid_results:
                     for i, (ocr, caption, url, prompt, img_id, sim) in enumerate(valid_results):
